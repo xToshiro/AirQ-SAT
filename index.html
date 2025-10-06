@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirQ-SAT - Monitoramento da Qualidade do Ar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .card { background-color: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); }
+        .tab-button { transition: all 0.3s; }
+        .tab-button.active { border-color: #3b82f6; color: #3b82f6; background-color: #eff6ff; }
+        .spinner { border-top-color: #3b82f6; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.9rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+        }
+        .toast.show { opacity: 1; transform: translate(-50%, -10px); }
+        .toast.success { background-color: #28a745; }
+        .toast.error { background-color: #dc3545; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="toast-container" class="toast"></div>
+
+    <div class="container mx-auto p-4 sm:p-6 md:p-8">
+        <header class="text-center mb-8 md:mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">
+                <i class="fas fa-satellite text-blue-500"></i> AirQ-SAT
+            </h1>
+            <p class="mt-2 text-lg text-gray-600">Avaliação da Qualidade do Ar por Imagens de Satélite</p>
+        </header>
+
+        <div class="mb-6 border-b border-gray-200">
+            <nav class="flex space-x-4 -mb-px" aria-label="Tabs">
+                <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="dashboard">
+                    <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                </button>
+                <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="nova-analise">
+                    <i class="fas fa-plus-circle mr-2"></i>Nova Análise
+                </button>
+                <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="configuracoes">
+                    <i class="fas fa-cog mr-2"></i>Configurações
+                </button>
+            </nav>
+        </div>
+
+        <!-- Conteúdo das Tabs -->
+        <div id="tab-content">
+            <!-- TAB DASHBOARD -->
+            <div id="dashboard-tab" class="tab-pane hidden">
+                <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <aside class="lg:col-span-1 space-y-8">
+                        <div class="card p-6">
+                            <h2 class="text-xl font-semibold mb-4 text-gray-700">Consultar Análise Salva</h2>
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="regiao-select" class="block text-sm font-medium text-gray-700 mb-1">Selecione a Região</label>
+                                    <select id="regiao-select" class="w-full p-2 border border-gray-300 rounded-md shadow-sm"></select>
+                                </div>
+                                <button id="analisar-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2.5 rounded-md">
+                                    <i class="fas fa-search mr-2"></i>Analisar Região
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+                    <section id="resultados-container" class="lg:col-span-2 space-y-8">
+                         <div id="loading" class="hidden text-center py-24"><div class="spinner w-12 h-12 rounded-full border-4 border-gray-200 mx-auto"></div><p class="mt-4">Processando...</p></div>
+                         <div id="welcome-message" class="card p-8 text-center"><i class="fas fa-chart-line text-5xl text-blue-400 mb-4"></i><h2 class="text-2xl font-bold">Bem-vindo ao Dashboard</h2><p class="mt-2">Selecione uma região para visualizar a análise.</p></div>
+                         <div id="error-message" class="hidden card bg-red-100 border-l-4 border-red-500 text-red-700 p-4"><p class="font-bold">Erro</p><p id="error-text"></p></div>
+                         <div id="resultados-content" class="hidden"></div>
+                    </section>
+                </main>
+            </div>
+
+            <!-- TAB NOVA ANÁLISE -->
+            <div id="nova-analise-tab" class="tab-pane hidden">
+                 <div class="max-w-4xl mx-auto card p-8">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">Criar Nova Análise de Qualidade do Ar</h2>
+                    <p class="text-gray-600 mb-6">Esta seção permite iniciar um novo processo de análise. Escolha a aquisição automática para usar o openEO para buscar e processar dados de satélite, ou a entrada manual se você já tiver os valores de concentração.</p>
+                    
+                    <div class="mb-4 border-b border-gray-200">
+                        <nav class="flex space-x-4 -mb-px">
+                            <button class="subtab-button active py-3 px-1 border-b-2 font-semibold text-sm" data-subtab="auto">Aquisição Automática</button>
+                            <button class="subtab-button py-3 px-1 border-b-2 font-semibold text-sm text-gray-500" data-subtab="manual">Entrada Manual</button>
+                        </nav>
+                    </div>
+
+                    <!-- Sub-tab Automática -->
+                    <div id="auto-subtab" class="subtab-pane">
+                        <form id="auto-analise-form" class="space-y-4">
+                            <p class="text-sm text-gray-500">Defina os parâmetros para a busca automática de dados via Copernicus Data Space Ecosystem.</p>
+                             <div>
+                                <label for="auto-nome-regiao" class="block text-sm font-medium">Nome da Região</label>
+                                <input type="text" id="auto-nome-regiao" required class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: Região Metropolitana de Fortaleza">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label for="start-date" class="block text-sm font-medium">Data de Início</label>
+                                    <input type="date" id="start-date" required class="mt-1 w-full p-2 border rounded-md">
+                                </div>
+                                <div>
+                                    <label for="end-date" class="block text-sm font-medium">Data de Fim</label>
+                                    <input type="date" id="end-date" required class="mt-1 w-full p-2 border rounded-md">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Área de Interesse (Bounding Box)</label>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                                    <input type="number" step="any" id="west" placeholder="Oeste (Lon)" required class="p-2 border rounded-md">
+                                    <input type="number" step="any" id="south" placeholder="Sul (Lat)" required class="p-2 border rounded-md">
+                                    <input type="number" step="any" id="east" placeholder="Leste (Lon)" required class="p-2 border rounded-md">
+                                    <input type="number" step="any" id="north" placeholder="Norte (Lat)" required class="p-2 border rounded-md">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-md"><i class="fas fa-rocket mr-2"></i>Iniciar Análise Automática</button>
+                        </form>
+                    </div>
+
+                    <!-- Sub-tab Manual -->
+                    <div id="manual-subtab" class="subtab-pane hidden">
+                       <form id="manual-analise-form" class="space-y-4">
+                            <p class="text-sm text-gray-500">Insira manualmente os valores de concentração de poluentes que você coletou.</p>
+                            <!-- Campos do formulário manual aqui, similar à versão anterior -->
+                            <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-md"><i class="fas fa-save mr-2"></i>Salvar Análise Manual</button>
+                       </form>
+                    </div>
+                 </div>
+            </div>
+
+            <!-- TAB CONFIGURAÇÕES -->
+            <div id="configuracoes-tab" class="tab-pane hidden">
+                <div class="max-w-2xl mx-auto card p-8">
+                    <h2 class="text-2xl font-bold mb-2">Configurações de Acesso</h2>
+                    <p class="text-gray-600 mb-6">Insira suas credenciais do <a href="https://dataspace.copernicus.eu/" target="_blank" class="text-blue-500 hover:underline">Copernicus Data Space Ecosystem</a> para habilitar a aquisição automática de dados via openEO.</p>
+                    <form id="config-form" class="space-y-4">
+                        <div>
+                            <label for="openeo-url" class="block text-sm font-medium text-gray-700">URL do Backend openEO</label>
+                            <input type="url" id="openeo-url" class="mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="https://openeofed.dataspace.copernicus.eu">
+                        </div>
+                        <div>
+                            <label for="client-id" class="block text-sm font-medium text-gray-700">Client ID</label>
+                            <input type="text" id="client-id" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                        </div>
+                        <div>
+                            <label for="client-secret" class="block text-sm font-medium text-gray-700">Client Secret</label>
+                            <input type="password" id="client-secret" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                        </div>
+                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2.5 rounded-md">
+                            <i class="fas fa-save mr-2"></i>Salvar Configurações
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Lógica JS completa para gerenciar tabs, sub-tabs, formulários e chamadas de API
+        // (similar à versão anterior, mas expandida para novas funcionalidades)
+        document.addEventListener('DOMContentLoaded', () => {
+            const API_URL = 'http://127.0.0.1:5000/api';
+            // Lógica para tabs principais
+            const tabs = document.querySelectorAll('.tab-button');
+            const panes = document.querySelectorAll('.tab-pane');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    panes.forEach(p => p.classList.add('hidden'));
+                    document.getElementById(`${tab.dataset.tab}-tab`).classList.remove('hidden');
+                });
+            });
+            tabs[0].click(); // Abre a primeira tab por padrão
+
+            // Lógica para sub-tabs de "Nova Análise"
+            const subtabs = document.querySelectorAll('.subtab-button');
+            const subpanes = document.querySelectorAll('.subtab-pane');
+             subtabs.forEach(subtab => {
+                subtab.addEventListener('click', () => {
+                    subtabs.forEach(t => {t.classList.remove('active'); t.classList.add('text-gray-500')});
+                    subtab.classList.add('active');
+                    subtab.classList.remove('text-gray-500');
+                    subpanes.forEach(p => p.classList.add('hidden'));
+                    document.getElementById(`${subtab.dataset.subtab}-subtab`).classList.remove('hidden');
+                });
+            });
+
+            // Carregamento de regiões e configurações
+            carregarRegioes();
+            carregarConfig();
+
+            // Handlers de formulário
+            document.getElementById('analisar-btn').addEventListener('click', () => analisarQualidadeAr(document.getElementById('regiao-select').value));
+            document.getElementById('config-form').addEventListener('submit', salvarConfig);
+            document.getElementById('auto-analise-form').addEventListener('submit', iniciarAnaliseAutomatica);
+            // Adicionar handler para o form manual se necessário
+        });
+
+        const API_URL = 'http://127.0.0.1:5000/api';
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            container.textContent = message;
+            container.className = `toast show ${type}`;
+            setTimeout(() => { container.className = 'toast'; }, 3000);
+        }
+
+        async function carregarRegioes() {
+            const select = document.getElementById('regiao-select');
+            try {
+                const response = await fetch(`${API_URL}/regioes`);
+                const regioes = await response.json();
+                select.innerHTML = '<option value="">-- Escolha uma região --</option>';
+                regioes.forEach(r => select.innerHTML += `<option value="${r.id}">${r.nome}</option>`);
+            } catch (e) {
+                select.innerHTML = '<option>Erro ao carregar</option>';
+                showToast('Falha ao carregar regiões.', 'error');
+            }
+        }
+
+        async function carregarConfig() {
+            try {
+                const response = await fetch(`${API_URL}/config`);
+                const config = await response.json();
+                document.getElementById('openeo-url').value = config.openeo_url || '';
+                document.getElementById('client-id').value = config.client_id || '';
+            } catch (e) {
+                showToast('Falha ao carregar configurações.', 'error');
+            }
+        }
+
+        async function salvarConfig(event) {
+            event.preventDefault();
+            const payload = {
+                openeo_url: document.getElementById('openeo-url').value,
+                client_id: document.getElementById('client-id').value,
+                client_secret: document.getElementById('client-secret').value
+            };
+            try {
+                const response = await fetch(`${API_URL}/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Falha ao salvar');
+                showToast('Configurações salvas com sucesso!');
+            } catch (e) {
+                showToast('Erro ao salvar configurações.', 'error');
+            }
+        }
+        
+        async function iniciarAnaliseAutomatica(event) {
+            event.preventDefault();
+            const payload = {
+                nome_regiao: document.getElementById('auto-nome-regiao').value,
+                start_date: document.getElementById('start-date').value,
+                end_date: document.getElementById('end-date').value,
+                west: parseFloat(document.getElementById('west').value),
+                south: parseFloat(document.getElementById('south').value),
+                east: parseFloat(document.getElementById('east').value),
+                north: parseFloat(document.getElementById('north').value),
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/automated_analysis`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.erro || 'Falha ao iniciar análise.');
+                showToast(result.mensagem, 'success');
+                // Aqui você pode adicionar lógica para monitorar o job_id
+            } catch (e) {
+                showToast(e.message, 'error');
+            }
+        }
+        
+        async function analisarQualidadeAr(regiaoId) {
+            if (!regiaoId) return;
+            const welcome = document.getElementById('welcome-message');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error-message');
+            const content = document.getElementById('resultados-content');
+            
+            welcome.classList.add('hidden');
+            error.classList.add('hidden');
+            content.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_URL}/qualidade_ar?regiao_id=${regiaoId}`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro);
+                preencherResultados(data);
+                content.classList.remove('hidden');
+            } catch (e) {
+                document.getElementById('error-text').textContent = e.message;
+                error.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function preencherResultados(dados) {
+            const content = document.getElementById('resultados-content');
+            const { cor, texto } = getCorPorRisco(dados.nivel_risco);
+
+            content.innerHTML = `
+                <div class="card p-6 mb-8 fade-in">
+                    <h3 class="text-2xl font-bold mb-4">${dados.nome_regiao}</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div><p class="text-sm text-gray-500">Atualização</p><p class="text-lg font-semibold">${new Date(dados.ultima_atualizacao).toLocaleString('pt-BR')}</p></div>
+                        <div><p class="text-sm text-gray-500">Fonte</p><p class="text-lg font-semibold">${dados.satelite}</p></div>
+                        <div><p class="text-sm text-gray-500">AQI</p><p class="text-2xl font-bold ${texto}">${dados.aqi_geral}</p></div>
+                        <div><p class="text-sm text-gray-500">Risco</p><div class="flex justify-center mt-1"><span class="text-lg font-semibold px-3 py-1 rounded-full ${cor} ${texto === 'text-white' ? '' : 'text-gray-800'}">${dados.nivel_risco}</span></div></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">${dados.poluentes.map(criarCardPoluente).join('')}</div>
+            `;
+        }
+
+        function criarCardPoluente(p) {
+            const { cor, texto } = getCorPorRisco(p.nivel_risco);
+            return `
+                <div class="card p-5 flex flex-col justify-between fade-in">
+                    <div>
+                        <div class="flex justify-between items-start">
+                            <h4 class="text-lg font-bold">${p.nome} (${p.formula})</h4>
+                            <span class="text-xs font-semibold px-2 py-1 rounded-full ${cor} ${texto === 'text-white' ? '' : 'text-gray-800'}">${p.nivel_risco}</span>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-3">${p.descricao_curta || ''}</p>
+                    </div>
+                    <div class="text-center mt-4">
+                        <p class="text-3xl font-bold">${p.valor}<span class="text-lg font-normal text-gray-500 ml-1">${p.unidade}</span></p>
+                        <p class="text-xs text-gray-400 mt-1">Concentração</p>
+                    </div>
+                </div>`;
+        }
+        
+        function getCorPorRisco(nivel) {
+             const nivelLower = nivel.toLowerCase();
+             if (nivelLower === 'bom') return { cor: 'bg-green-500', texto: 'text-white' };
+             if (nivelLower === 'moderado') return { cor: 'bg-yellow-400', texto: 'text-gray-800' };
+             if (nivelLower === 'ruim') return { cor: 'bg-orange-500', texto: 'text-white' };
+             if (nivelLower === 'muito ruim') return { cor: 'bg-red-600', texto: 'text-white' };
+             if (nivelLower === 'péssimo') return { cor: 'bg-purple-700', texto: 'text-white' };
+             return { cor: 'bg-gray-400', texto: 'text-white' };
+        }
+
+    </script>
+</body>
+</html>
+
